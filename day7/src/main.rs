@@ -22,7 +22,8 @@ fn calculate_nonlinear(mut input: Vec<i32>) -> i32 {
     for i in (0..input[input.len() - 1]).rev() {
         let mut counter_min = 0;
         for j in 0..input.len() {
-            counter_min += (1..=((input[j] - i).abs())).sum::<i32>();
+            let n = (input[j] - i).abs();
+            counter_min += (n * (n + 1)) / 2;
         }
         if counter == 0 {
             counter = counter_min;
@@ -78,10 +79,7 @@ mod tests {
 
     #[test]
     fn test_nonlinear() {
-        let mut input_vector = calculate_nonlinear(vec![16, 1, 2, 0, 4, 2, 7, 1, 2, 14]);
-        //let median = calculate_median(&mut input_vector);
-        //assert_eq!(median, 5);
-        //let fuel = move_to_median(input_vector, median);
-        //assert_eq!(fuel, 168);
+        let fuel = calculate_nonlinear(vec![16, 1, 2, 0, 4, 2, 7, 1, 2, 14]);
+        assert_eq!(fuel, 168);
     }
 }
