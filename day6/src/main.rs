@@ -1,54 +1,75 @@
-use std::collections::HashMap;
 use std::fs;
 
+const LANTERN_REGEN_CYCLE: usize = 6;
+const LANTERN_NEWBORN_CYCLE: usize = 8;
+
 fn main() {
-    let mut lantern_hash = read_file("test_input.txt");
-    evolution(lantern_hash);
+    let days = 256;
+    let lantern_vec = read_file("input.txt");
+    println!(
+        "{:#?}",
+        evolution(lantern_vec, days).into_iter().sum::<i64>()
+    );
 }
 
-fn read_file(path: &str) -> HashMap<i32, i32> {
+fn read_file(path: &str) -> Vec<i64> {
     let input_string = fs::read_to_string(path).expect("file in directory");
     let input_vector: Vec<&str> = input_string.lines().next().unwrap().split(",").collect();
-    let mut lantern_hash = (0..8).map(|key| (key, 0_i32)).collect::<HashMap<_, _>>();
+    let mut lantern_vec = vec![0; LANTERN_NEWBORN_CYCLE + 1];
 
     for entry in input_vector {
-        let value = lantern_hash
-            .entry(entry.parse::<i32>().unwrap())
-            .or_insert(0);
-        *value += 1;
+        let value = entry.parse::<usize>().unwrap();
+        lantern_vec[value] += 1;
     }
-    lantern_hash
+    lantern_vec
 }
 
-fn evolution(mut lantern_hash: HashMap<i32, i32>) {
-    let mut cache = 0;
-
-    for i in (1..=8).rev() {
-        match i {
-            1 => {
-                lantern_hash.entry(8) = lantern_hash.get(&i).unwrap();
-                lantern_hash.entry(6).unwrap() = &cache;
-            }
-            8 => {
-                cache = *lantern_hash.entry(i - 1).unwrap();
-                lantern_hash.entry(i - 1).unwrap() = lantern_hash.get(&i).unwrap();
-            }
-            _ => {
-                lantern_hash.entry(i - 1).unwrap() = &cache;
-                cache = *lantern_hash.entry(i - 1).unwrap();
+fn evolution(mut lantern_vec: Vec<i64>, days: usize) -> Vec<i64> {
+    for _i in 0..days {
+        let mut cache = lantern_vec[LANTERN_NEWBORN_CYCLE];
+        for i in (0..lantern_vec.len()).rev() {
+            match i {
+                0 => {
+                    lantern_vec[LANTERN_NEWBORN_CYCLE] = cache;
+                    lantern_vec[LANTERN_REGEN_CYCLE] += cache;
+                }
+                _ => {
+                    let cache2 = cache;
+                    cache = lantern_vec[i - 1];
+                    lantern_vec[i - 1] = cache2;
+                }
             }
         }
     }
 
-    println!("{:#?}", lantern_hash);
+    lantern_vec
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::read_file;
+    use crate::{evolution, read_file};
 
     #[test]
     fn test_input() {
         let test_output = read_file("./test_input.txt");
+        assert_eq!(test_output, [0, 1, 1, 2, 1, 0, 0, 0, 0]);
+    }
+    #[test]
+    fn test_evolution_once() {
+        let test_output = read_file("./test_input.txt");
+        let test_evolution = evolution(test_output, 1);
+        assert_eq!(test_evolution, [1, 1, 2, 1, 0, 0, 0, 0, 0]);
+    }
+    #[test]
+    fn test_evolution_overflow() {
+        let test_output = vec![1, 0, 0, 0, 0, 0, 0, 0, 0];
+        let test_evolution = evolution(test_output, 1);
+        assert_eq!(test_evolution, [0, 0, 0, 0, 0, 0, 1, 0, 1]);
+    }
+    #[test]
+    fn test_evolution_twice() {
+        let test_output = read_file("./test_input.txt");
+        let test_evolution = evolution(test_output, 2);
+        assert_eq!(test_evolution, [1, 2, 1, 0, 0, 0, 1, 0, 1]);
     }
 }
