@@ -4,13 +4,49 @@ use std::fs;
 
 fn main() {
     let input = read_file("input.txt");
-    let score = check_validity(input);
-    println!("{}", score);
+    let (score, legal) = check_validity(input);
+    let overall_score = calc_corrected(legal);
+    println!("score: {}", score);
+    println!("overall_score: {}", overall_score);
 }
 
-fn check_validity(lines: Vec<String>) -> i32 {
+fn calc_corrected(legal: Vec<String>) -> i64 {
+    let mut scores = Vec::new();
+
+    for line in legal {
+        let mut score = 0;
+        for char in line.chars() {
+            match char {
+                '}' => {
+                    score *= 5;
+                    score += 3;
+                }
+                ']' => {
+                    score *= 5;
+                    score += 2;
+                }
+                ')' => {
+                    score *= 5;
+                    score += 1;
+                }
+                '>' => {
+                    score *= 5;
+                    score += 4;
+                }
+                _ => panic!("invalid character in score"),
+            };
+        }
+        scores.push(score);
+    }
+    scores.sort_unstable();
+    scores[scores.len() / 2]
+}
+
+fn check_validity(lines: Vec<String>) -> (i32, Vec<String>) {
     let mut score = 0;
+    let mut auto_corrections = Vec::new();
     for line in lines {
+        let mut illegal = false;
         let mut stack = Vec::new();
         for char in line.chars() {
             match char {
@@ -20,14 +56,23 @@ fn check_validity(lines: Vec<String>) -> i32 {
                         stack.pop();
                     } else {
                         score += get_score(char);
+                        illegal = true;
                         break;
                     }
                 }
                 _ => panic!("invalid character in input"),
             }
         }
+        if !illegal {
+            let mut auto_corrected = String::new();
+            stack.reverse();
+            for element in &stack {
+                auto_corrected.push(matching_delimiter(*element));
+            }
+            auto_corrections.push(auto_corrected);
+        }
     }
-    score
+    (score, auto_corrections)
 }
 
 fn get_score(char: char) -> i32 {
@@ -60,18 +105,39 @@ fn read_file(path: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{check_validity, read_file};
+    use crate::{calc_corrected, check_validity, read_file};
 
     #[test]
     fn test_validity() {
         let input = vec![String::from("{{}")];
-        let score = check_validity(input);
+        let (score, _) = check_validity(input);
         assert_eq!(score, 0);
     }
     #[test]
     fn test_illegal() {
         let input = read_file("test_input.txt");
-        let score = check_validity(input);
+        let (score, _) = check_validity(input);
         assert_eq!(score, 26397);
+    }
+    #[test]
+    fn test_auto_correct() {
+        let input = read_file("test_input.txt");
+        let (_, auto_corrected) = check_validity(input);
+        let expected = vec![
+            String::from("}}]])})]"),
+            String::from(")}>]})"),
+            String::from("}}>}>))))"),
+            String::from("]]}}]}]}>"),
+            String::from("])}>"),
+        ];
+        assert_eq!(auto_corrected, expected)
+    }
+
+    #[test]
+    fn test_auto_score() {
+        let input = read_file("test_input.txt");
+        let (_, auto_corrected) = check_validity(input);
+        let score = calc_corrected(auto_corrected);
+        assert_eq!(score, 288957);
     }
 }
