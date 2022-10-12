@@ -167,7 +167,7 @@ mod tests {
         let height_map = read_file("test_input.txt");
         let lowest = search_lowest(&height_map);
         let (height, width) = (height_map.len(), height_map[0].len());
-        let basins = calculate_basins(lowest, &height_map, height, width);
+        let basins = calculate_basins(lowest, &height_map, height_map.len(), height_map[0].len());
         assert_eq!(1134, basins);
     }
 }
