@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fs;
 
 const GRID_LENGTH: i32 = 10;
@@ -44,15 +45,19 @@ fn increase_adj(row: i32, column: i32, octopus: &mut Vec<Vec<u32>>) -> Vec<(usiz
         octopus[*adj_row][*adj_column] += 1;
     }
 
-    adjacent
+    for (adj_x, adj_y) in adjacent
         .into_iter()
         .filter(|(x, y)| octopus[*x][*y] == 10)
         .collect::<Vec<(usize, usize)>>()
+    {
+        increase_adj(adj_x as i32, adj_y as i32, octopus);
+    }
+    Vec::new()
 }
 
 fn energy_evolution(steps: usize, mut octopus: Vec<Vec<u32>>) -> (Vec<Vec<u32>>, i32) {
     let mut flash_counter = 0;
-    let mut step = 0;
+    let mut step_sync = 0;
     loop {
         let mut flash_queue = Vec::new();
 
@@ -65,42 +70,33 @@ fn energy_evolution(steps: usize, mut octopus: Vec<Vec<u32>>) -> (Vec<Vec<u32>>,
             }
         }
 
-        loop {
-            let mut new_flash_queue = Vec::new();
-            for i in 0..flash_queue.len() {
-                let mut append = increase_adj(
-                    flash_queue[i].0 as i32,
-                    flash_queue[i].1 as i32,
-                    &mut octopus,
-                );
-                new_flash_queue.append(&mut append);
-            }
-            if new_flash_queue.is_empty() {
-                break;
-            } else {
-                flash_queue = new_flash_queue;
-            }
+        for i in 0..flash_queue.len() {
+            increase_adj(
+                flash_queue[i].0 as i32,
+                flash_queue[i].1 as i32,
+                &mut octopus,
+            );
         }
-        step += 1;
+
+        step_sync += 1;
 
         octopus = octopus
             .into_iter()
             .map(|row| {
                 row.into_iter()
-                    .map(|element| {
-                        if element > 9 {
+                    .map(|element| match element.cmp(&9) {
+                        Ordering::Greater => {
                             flash_counter += 1;
                             0
-                        } else {
-                            element
                         }
+                        _ => element,
                     })
                     .collect()
             })
             .collect();
 
         if flash_counter == 100 {
-            println!("step: {step}");
+            println!("step: {step_sync}");
             break;
         }
         flash_counter = 0;
