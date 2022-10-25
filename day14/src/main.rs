@@ -1,29 +1,37 @@
 use std::{collections::HashMap, fs, time::Instant};
 
+//6.149444ms
 fn main() {
     let start_time = Instant::now();
 
-    let (mut pattern, rules) = read_file("input.txt");
-    for i in 0..40 {
-        println!("{i}");
-        pattern = apply_rules(pattern.clone(), &rules);
+    let (pattern, rules, encoding) = read_file("input.txt");
+    let mut pattern = encode_pattern(pattern, &encoding);
+
+    for _i in 0..40 {
+        pattern = apply_rules_encoding(pattern.clone(), &rules);
     }
 
-    println!("{:?}", count_polymers(pattern));
+    count_polymers_encoded(pattern, encoding);
+
     let duration = start_time.elapsed();
     println!("Duration: {:?}\n", duration);
 }
 
-fn count_polymers(pattern: String) -> i64 {
-    let mut counter = HashMap::new();
-    for char in pattern.chars() {
-        let counted = counter.entry(char).or_insert(0);
-        *counted += 1;
+fn count_polymers_encoded(pattern: HashMap<u32, u64>, encoding: HashMap<String, u32>) {
+    let mut polymers_counter = HashMap::new();
+    for (key, value) in encoding {
+        let c1 = key.chars().next().unwrap();
+        let c2 = key.chars().nth(1).unwrap();
+        let entry = polymers_counter.entry(c1).or_insert(0);
+
+        *entry += pattern.get(&value).unwrap_or(&0);
+        let entry = polymers_counter.entry(c2).or_insert(0);
+        *entry += pattern.get(&value).unwrap_or(&0);
     }
 
-    let mut min = *counter.iter().next().unwrap().1;
-    let mut max = *counter.iter().next().unwrap().1;
-    for (_, element) in counter {
+    let mut min = *polymers_counter.iter().next().unwrap().1;
+    let mut max = *polymers_counter.iter().next().unwrap().1;
+    for (_, element) in polymers_counter {
         if element > max {
             max = element;
         } else if element < min {
@@ -31,10 +39,13 @@ fn count_polymers(pattern: String) -> i64 {
         }
     }
 
-    max - min
+    let max = (max as f64 / 2.0).ceil();
+    let min = (min as f64 / 2.0).ceil();
+
+    println!("{}", max - min);
 }
 
-fn read_file(path: &str) -> (String, HashMap<String, String>) {
+fn read_file(path: &str) -> (String, HashMap<u32, (u32, u32)>, HashMap<String, u32>) {
     let input = fs::read_to_string(path).unwrap();
     let pattern = input.lines().next().unwrap().to_string();
     let input = input.trim_start_matches(&pattern).trim_start();
@@ -42,25 +53,49 @@ fn read_file(path: &str) -> (String, HashMap<String, String>) {
         .lines()
         .map(|line| {
             let split = line.split(" -> ").collect::<Vec<&str>>();
-            (split[0].to_string(), split[1].to_string())
-        })
-        .collect::<HashMap<String, String>>();
+            let mut result1 = String::new();
+            let mut result2 = String::new();
+            result1.push(split[0].chars().next().unwrap());
+            result1.push_str(split[1]);
+            result2.push_str(split[1]);
+            result2.push(split[0].chars().nth(1).unwrap());
 
-    (pattern, rules)
+            (split[0].to_string(), vec![result1, result2])
+        })
+        .collect::<HashMap<String, Vec<String>>>();
+
+    let mut encoding = HashMap::new();
+    for (counter, key) in rules.keys().enumerate() {
+        encoding.entry(key.clone()).or_insert(counter as u32);
+    }
+
+    let new_rules = rules
+        .iter()
+        .map(|(key, value)| {
+            (
+                *encoding.get(key).unwrap(),
+                (
+                    *encoding.get(&value[0]).unwrap(),
+                    *encoding.get(&value[1]).unwrap(),
+                ),
+            )
+        })
+        .collect::<HashMap<u32, (u32, u32)>>();
+
+    (pattern, new_rules, encoding)
 }
 
-fn apply_rules(pattern: String, rules: &HashMap<String, String>) -> String {
-    let mut pattern_new = String::new();
-    pattern_new.push(pattern.chars().next().unwrap());
+fn encode_pattern(pattern: String, encoding: &HashMap<String, u32>) -> HashMap<u32, u64> {
+    let mut pattern_new = HashMap::new();
 
     for i in 0..pattern.len() - 1 {
         let mut check = String::new();
         check.push(pattern.chars().nth(i).unwrap());
         check.push(pattern.chars().nth(i + 1).unwrap());
-        match rules.get(&check) {
+        match encoding.get(&check) {
             Some(x) => {
-                pattern_new.push_str(x);
-                pattern_new.push(pattern.chars().nth(i + 1).unwrap());
+                let entry = pattern_new.entry(*x).or_insert(0_u64);
+                *entry += 1;
             }
             None => continue,
         }
@@ -68,24 +103,17 @@ fn apply_rules(pattern: String, rules: &HashMap<String, String>) -> String {
     pattern_new
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::{apply_rules, count_polymers, read_file};
-
-    #[test]
-    fn test_first_rule() {
-        let (pattern, rules) = read_file("test_input.txt");
-        let pattern = apply_rules(pattern, &rules);
-        assert_eq!("NCNBCHB", &pattern);
+fn apply_rules_encoding(
+    pattern: HashMap<u32, u64>,
+    rules: &HashMap<u32, (u32, u32)>,
+) -> HashMap<u32, u64> {
+    let mut pattern_new = HashMap::new();
+    for (key, value) in pattern {
+        let (pattern1, pattern2) = rules.get(&key).unwrap();
+        let count1 = pattern_new.entry(*pattern1).or_insert(0);
+        *count1 += value;
+        let count2 = pattern_new.entry(*pattern2).or_insert(0);
+        *count2 += value;
     }
-    #[test]
-    fn test_ten_rules() {
-        let (mut pattern, rules) = read_file("test_input.txt");
-        for _i in 0..10 {
-            pattern = apply_rules(pattern.clone(), &rules);
-        }
-        let count = count_polymers(pattern);
-
-        assert_eq!(1588, count);
-    }
+    pattern_new
 }
