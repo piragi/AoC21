@@ -17,9 +17,9 @@ struct Coord {
 }
 
 fn main() {
-    let target = get_input("target area: x=352..377, y=-49..-30");
-    let max = get_max(target);
-    println!("{max}");
+    let target = get_input("target area: x=102..157, y=-146..-90");
+    let hits = get_hits(target);
+    println!("{}", hits.len());
 }
 
 fn get_input(input: &str) -> Target {
@@ -44,12 +44,7 @@ fn get_input(input: &str) -> Target {
 }
 
 fn get_max(ranges: Target) -> i32 {
-    let mut counter = 0;
-    let mut x = 0;
-    while x < ranges.x.0 {
-        counter += 1;
-        x = (counter * (counter + 1)) / 2;
-    }
+    let counter = gauss(ranges.x.0);
 
     println!("{counter}");
 
@@ -66,6 +61,33 @@ fn get_max(ranges: Target) -> i32 {
     }
 
     max_y
+}
+
+fn gauss(range: i32) -> i32 {
+    let mut counter = 0;
+    let mut x = 0;
+    while x < range {
+        counter += 1;
+        x = (counter * (counter + 1)) / 2;
+    }
+
+    counter
+}
+
+fn get_hits(ranges: Target) -> Vec<Coord> {
+    let x_min = gauss(ranges.x.0);
+    let mut hits = Vec::new();
+
+    for x in x_min..x_min * x_min {
+        for y in ranges.y.0..ranges.y.0 * ranges.y.0 {
+            let (lands, _) = probe_evolution(&ranges, (x, y));
+            if lands {
+                hits.push(Coord { x, y });
+            }
+        }
+    }
+
+    hits
 }
 
 fn probe_evolution(ranges: &Target, probe: (i32, i32)) -> (bool, i32) {
@@ -104,7 +126,7 @@ fn probe_evolution(ranges: &Target, probe: (i32, i32)) -> (bool, i32) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{get_input, get_max, probe_evolution, Coord};
+    use crate::{get_hits, get_input, get_max, probe_evolution, Coord};
 
     #[test]
     fn test_input() {
@@ -140,5 +162,13 @@ mod tests {
         let target = get_input("target area: x=20..30, y=-10..-5");
         let max = get_max(target);
         assert_eq!(45, max);
+    }
+
+    #[test]
+    fn test_hits() {
+        let target = get_input("target area: x=20..30, y=-10..-5");
+        let hits = get_hits(target);
+        println!("{:?}", hits);
+        assert_eq!(112, hits.len());
     }
 }
