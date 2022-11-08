@@ -1,12 +1,22 @@
-use std::fs;
+use core::fmt;
+use std::{
+    borrow::Borrow,
+    collections::{HashMap, HashSet},
+    fs,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 struct Scanner {
     pos: Coord,
     beacons: Vec<Beacon>,
+    id: usize,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+struct Scanners {
+    scanner: Vec<Scanner>,
+}
+
+#[derive(Eq, Hash, Debug, PartialEq, Clone)]
 struct Coord {
     x: i32,
     y: i32,
@@ -19,166 +29,163 @@ struct Beacon {
     adj: Vec<Coord>,
 }
 
+impl Scanners {
+    fn compare_scanners1(&mut self, start_id: usize, done: &mut HashSet<usize>) {
+        done.insert(start_id);
+
+        for i in 0..self.scanner.len() {
+            if done.contains(&i) {
+                continue;
+            }
+            let scanner = &self.scanner[start_id];
+            match scanner.overlap_rotate(&self.scanner[i]) {
+                Some(x) => {
+                    self.scanner[i] = x;
+                    self.compare_scanners1(self.scanner[i].id, done)
+                }
+                None => continue,
+            }
+        }
+    }
+
+    fn compare_scanners(&mut self) {
+        let mut done = HashSet::new();
+        self.compare_scanners1(0, &mut done);
+    }
+
+    fn count_beacons(&self) -> usize {
+        let mut beacons = HashSet::new();
+        for s in &self.scanner {
+            let scanner = s.borrow();
+            for beacon in &scanner.beacons {
+                beacons.insert(beacon.pos.add(&scanner.pos));
+            }
+        }
+        beacons.len()
+    }
+
+    fn manhatten_distances(&mut self) {
+        let mut vec = Vec::new();
+        for scanner in &self.scanner {
+            for scanner_compare in &self.scanner {
+                let manhatten = scanner.pos.manhattan(&scanner_compare.pos);
+                if vec.is_empty() || (*vec.last().unwrap() < manhatten) {
+                    vec.push(manhatten);
+                }
+            }
+        }
+        println!("{}", vec.last().unwrap());
+    }
+}
+
+impl Scanner {
+    fn overlap_rotate(&self, other: &Scanner) -> Option<Scanner> {
+        let mut scanner2 = other.clone();
+        let mut m = HashMap::<Coord, (usize, u32)>::new();
+
+        for beacon in &self.beacons {
+            for beacon_compared in &other.beacons {
+                for rotation in 0..24 {
+                    let rotated = &beacon_compared.pos.rotate(rotation);
+                    let dist = beacon.pos.subtract(rotated);
+
+                    m.entry(dist)
+                        .and_modify(|e| e.1 += 1)
+                        .or_insert((rotation.into(), 1u32));
+                }
+            }
+        }
+
+        for (pos, (rotation, beacon_overlap)) in m {
+            if beacon_overlap >= 12 {
+                for i in 0..scanner2.beacons.len() {
+                    scanner2.beacons[i].pos =
+                        scanner2.beacons[i].pos.rotate(rotation.try_into().unwrap());
+                }
+                scanner2.pos = self.pos.add(&pos);
+                return Some(scanner2);
+            }
+        }
+        None
+    }
+}
+
+impl Coord {
+    fn rotate(&self, rotating: u8) -> Coord {
+        let (x, y, z) = (self.x, self.y, self.z);
+
+        let (x, y, z) = match rotating {
+            0 => (x, y, z),
+            1 => (-y, x, z),
+            2 => (-x, -y, z),
+            3 => (y, -x, z),
+            4 => (x, z, -y),
+            5 => (-z, x, -y),
+            6 => (-x, -z, -y),
+            7 => (z, -x, -y),
+            8 => (y, x, -z),
+            9 => (-x, y, -z),
+            10 => (-y, -x, -z),
+            11 => (x, -y, -z),
+            12 => (z, x, y),
+            13 => (-x, z, y),
+            14 => (-z, -x, y),
+            15 => (x, -z, y),
+            16 => (z, y, -x),
+            17 => (-y, z, -x),
+            18 => (-z, -y, -x),
+            19 => (y, -z, -x),
+            20 => (y, z, x),
+            21 => (-z, y, x),
+            22 => (-y, -z, x),
+            23 => (z, -y, x),
+            _ => unreachable!(),
+        };
+        Coord { x, y, z }
+    }
+
+    fn manhattan(&self, other: &Coord) -> u32 {
+        let d = (other.x - self.x).abs() + (other.y - self.y).abs() + (other.z - self.z).abs();
+        d as u32
+    }
+
+    fn subtract(&self, other: &Coord) -> Coord {
+        Coord {
+            x: self.x - other.x,
+            y: self.y - other.y,
+            z: self.z - other.z,
+        }
+    }
+
+    fn add(&self, other: &Coord) -> Coord {
+        Coord {
+            x: self.x + other.x,
+            y: self.y + other.y,
+            z: self.z + other.z,
+        }
+    }
+}
+impl fmt::Display for Coord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {}, {})", self.x, self.y, self.z)
+    }
+}
+
 fn main() {
-    let scanners = get_input("test.txt");
-    let scanners = construct_adjacency(scanners);
-    println!("{:?}", scanners[1].beacons[0].adj);
-    println!("{:?}", scanners[4].beacons[0].adj);
-    check_adj(scanners);
-}
+    let mut scanners = Scanners {
+        scanner: get_input("test.txt"),
+    };
 
-fn check_adj(scanners: Vec<Scanner>) {
-    let mut counter = 0;
-    for i in 0..scanners.len() {
-        for j in 0..scanners.len() {
-            println!("compare {i}.scanner with {j}.scanner");
-
-            if scanners[i] != scanners[j] {
-                for i_beacon in 0..scanners[i].beacons.len() {
-                    let mut beacon_overlap = 0;
-
-                    for j_beacon in 0..scanners[j].beacons.len() {
-                        let beacon = &scanners[i].beacons[i_beacon];
-                        let beacon_compare = &scanners[j].beacons[j_beacon];
-
-                        for i_adj in 0..beacon.adj.len() {
-                            for j_adj in 0..beacon_compare.adj.len() {
-                                let orientation = orientation(beacon.adj[i_adj].clone());
-                                let compare = &beacon_compare.adj[j_adj];
-
-                                if orientation.contains(compare) {
-                                    beacon_overlap += 1;
-                                }
-                            }
-                        }
-                        if beacon_overlap >= 11 {
-                            println!("point: {:?}", beacon.pos);
-                            counter += 1;
-                        }
-                        beacon_overlap = 0;
-                    }
-                }
-                println!("-------");
-            }
-        }
-    }
-    println!("counter: {counter}");
-}
-
-fn orientation(coord: Coord) -> Vec<Coord> {
-    let mut coord = coord.clone();
-    let mut orientation = Vec::new();
-
-    for _i in 0..2 {
-        orientation.append(&mut rotate_face(coord.clone()));
-        coord = rotate_x(coord);
-    }
-
-    coord = flip_y(coord);
-
-    for _i in 0..2 {
-        orientation.append(&mut rotate_face(coord.clone()));
-        coord = rotate_y(coord);
-    }
-
-    coord = flip_z(coord);
-
-    for _i in 0..2 {
-        orientation.append(&mut rotate_face(coord.clone()));
-        coord = rotate_z(coord);
-    }
-
-    orientation
-}
-
-fn rotate_face(mut coord: Coord) -> Vec<Coord> {
-    let mut orientation = Vec::new();
-    for _i in 0..4 {
-        coord = flip_x(coord);
-        orientation.push(coord.clone());
-    }
-    orientation
-}
-
-fn rotate_x(coord: Coord) -> Coord {
-    Coord {
-        x: -coord.x,
-        y: coord.y,
-        z: -coord.z,
-    }
-}
-
-fn rotate_y(coord: Coord) -> Coord {
-    Coord {
-        x: -coord.x,
-        y: -coord.y,
-        z: coord.z,
-    }
-}
-
-fn rotate_z(coord: Coord) -> Coord {
-    Coord {
-        x: coord.x,
-        y: -coord.y,
-        z: -coord.z,
-    }
-}
-
-fn flip_x(coord: Coord) -> Coord {
-    Coord {
-        x: coord.x,
-        y: coord.z,
-        z: -coord.y,
-    }
-}
-fn flip_y(coord: Coord) -> Coord {
-    Coord {
-        x: -coord.z,
-        y: coord.y,
-        z: coord.x,
-    }
-}
-fn flip_z(coord: Coord) -> Coord {
-    Coord {
-        x: -coord.y,
-        y: coord.x,
-        z: coord.z,
-    }
-}
-
-fn construct_adjacency(mut scanners: Vec<Scanner>) -> Vec<Scanner> {
-    let mut scanners_adj = Vec::new();
-    for scanner in &scanners {
-        let mut beacons_adj = Vec::new();
-        for beacon in &scanner.beacons {
-            let mut adj = Vec::new();
-            for adj_beacon in &scanner.beacons {
-                if beacon.pos != adj_beacon.pos {
-                    adj.push(Coord {
-                        x: adj_beacon.pos.x - beacon.pos.x,
-                        y: adj_beacon.pos.y - beacon.pos.y,
-                        z: adj_beacon.pos.z - beacon.pos.z,
-                    })
-                }
-            }
-            beacons_adj.push(adj);
-        }
-        scanners_adj.push(beacons_adj);
-    }
-
-    for i in 0..scanners.len() {
-        for j in 0..scanners[i].beacons.len() {
-            scanners[i].beacons[j].adj = scanners_adj[i][j].clone();
-        }
-    }
-
-    scanners
+    scanners.compare_scanners();
+    println!("number of beacons: {}", scanners.count_beacons());
+    scanners.manhatten_distances();
 }
 
 fn get_input(path: &str) -> Vec<Scanner> {
     let mut scanners = Vec::new();
     let mut beacons = Vec::new();
     let input = fs::read_to_string(path).unwrap();
+    let mut count = 0;
     for line in input.lines() {
         if line.starts_with("---") {
             beacons = Vec::new();
@@ -199,71 +206,17 @@ fn get_input(path: &str) -> Vec<Scanner> {
             scanners.push(Scanner {
                 pos: Coord { x: 0, y: 0, z: 0 },
                 beacons: beacons.clone(),
+                id: count,
             });
+            count += 1;
         }
     }
 
     scanners.push(Scanner {
         pos: Coord { x: 0, y: 0, z: 0 },
         beacons: beacons.clone(),
+        id: count,
     });
 
     scanners
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{construct_adjacency, get_input, Beacon, Coord, Scanner};
-
-    #[test]
-    fn test_input() {
-        let scanners = get_input("test.txt");
-        let scanner_0 = Scanner {
-            pos: Coord { x: 0, y: 0, z: 0 },
-            beacons: vec![
-                Beacon {
-                    pos: Coord { x: -1, y: -1, z: 1 },
-                    adj: Vec::new(),
-                },
-                Beacon {
-                    pos: Coord { x: -2, y: -2, z: 2 },
-                    adj: Vec::new(),
-                },
-                Beacon {
-                    pos: Coord { x: -3, y: -3, z: 3 },
-                    adj: Vec::new(),
-                },
-                Beacon {
-                    pos: Coord { x: -2, y: -3, z: 1 },
-                    adj: Vec::new(),
-                },
-                Beacon {
-                    pos: Coord { x: 5, y: 6, z: -4 },
-                    adj: Vec::new(),
-                },
-                Beacon {
-                    pos: Coord { x: 8, y: 0, z: 7 },
-                    adj: Vec::new(),
-                },
-            ],
-        };
-        assert_eq!(scanners[0], scanner_0);
-        assert_eq!(scanners[1], scanner_0);
-    }
-    #[test]
-    fn test_adjacency() {
-        let scanners = get_input("test.txt");
-        let beacon_0 = Beacon {
-            pos: Coord { x: -1, y: -1, z: 1 },
-            adj: vec![
-                Coord { x: -1, y: -1, z: 1 },
-                Coord { x: -2, y: -2, z: 2 },
-                Coord { x: -1, y: -2, z: 0 },
-                Coord { x: 6, y: 7, z: -5 },
-                Coord { x: 9, y: 1, z: 6 },
-            ],
-        };
-        let scanners = construct_adjacency(scanners);
-        assert_eq!(scanners[0].beacons[0], beacon_0);
-    }
 }
