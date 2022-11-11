@@ -1,75 +1,92 @@
-use std::{borrow::BorrowMut, fs};
+use std::{borrow::BorrowMut, collections::HashMap, fs, hash::Hash};
 
 struct Player {
-    pos: u32,
-    score: u32,
+    pos: HashMap<u64, HashMap<u64, u64>>,
 }
 
 struct Dice {
-    sides: Vec<u32>,
-    counter: u32,
+    sides: HashMap<u64, u64>,
+    counter: u64,
 }
 
 impl Dice {
     fn new() -> Dice {
         Dice {
-            sides: vec![1, 2, 3],
+            sides: HashMap::from([(3, 1), (4, 3), (5, 5), (6, 7), (7, 5), (8, 4), (9, 1)]),
             counter: 0,
-        }
-    }
-    fn roll3(&self) -> Dice {
-        Dice {
-            sides: self
-                .sides
-                .iter()
-                .map(|side| if *side > 97 { side + 3 - 100 } else { side + 3 })
-                .collect(),
-            counter: self.counter + 3,
         }
     }
 }
 
 impl Player {
-    fn play(&mut self, dice: &Dice) {
-        let sides_sum = dice.sides.iter().sum::<u32>();
-        self.pos += sides_sum;
-        while self.pos > 10 {
-            self.pos -= 10;
-        }
+    fn play(&mut self, dice: &mut Dice) -> bool {
+        let mut twenty_one = false;
+        let mut new_player = self.pos.clone();
 
-        self.score += self.pos;
+        dice.counter += 1;
+
+        for (pos, scores) in &self.pos {
+            for (side, side_counts) in &dice.sides {
+                let mut new_pos = pos + side;
+                while new_pos > 10 {
+                    new_pos -= 10;
+                }
+
+                let pos_entry = new_player.entry(new_pos).or_default();
+                for (score, players) in scores {
+                    let calculated_score = *score + new_pos;
+
+                    if calculated_score >= 21 {
+                        twenty_one = true;
+                    }
+
+                    let players_per_score = pos_entry.entry(calculated_score).or_insert(0);
+                    *players_per_score += side_counts * players;
+                }
+            }
+
+            let delete_entry = new_player.entry(*pos).or_default();
+
+            for (score, player) in scores {
+                delete_entry.entry(*score).and_modify(|e| *e -= player);
+            }
+        }
+        self.pos = new_player;
+        twenty_one
     }
 }
 
 fn main() {
     let start_time = std::time::Instant::now();
 
-    let (player1, player2) = get_input("input.txt");
+    let (player1, player2) = get_input("test.txt");
     let dice = Dice::new();
-    play1000(player1, player2, dice);
-
+    play21(player1, player2, dice);
     let duration = start_time.elapsed();
     println!("Duration: {:?}\n", duration);
 }
 
-fn play1000(mut player1: Player, mut player2: Player, mut dice: Dice) {
-    loop {
-        player1.play(&dice);
-        dice = dice.roll3();
-        if player1.score >= 1000 {
-            println!("{}", dice.counter * player2.score);
-            break;
-        }
-        println!("{:?}", dice.sides);
+fn play21(mut player1: Player, mut player2: Player, mut dice: Dice) {
+    while !player1.play(&mut dice) || !player2.play(&mut dice) {}
 
-        player2.play(&dice);
-        dice = dice.roll3();
-        if player2.score >= 1000 {
-            println!("{}", dice.counter * player1.score);
-            break;
+    println!("{:?}", player1.pos);
+    let score_player1 = calculate_universes(player1);
+    println!("{:?}", score_player1);
+    println!("{:?}", dice.counter);
+
+    let score_player2 = calculate_universes(player2);
+}
+
+fn calculate_universes(player: Player) -> u64 {
+    let mut counter = 0;
+    for scores in player.pos.values() {
+        for (score, players) in scores {
+            if *score >= 21 {
+                counter += players;
+            }
         }
-        println!("{:?}", dice.sides);
     }
+    counter
 }
 
 fn get_input(path: &str) -> (Player, Player) {
@@ -78,12 +95,16 @@ fn get_input(path: &str) -> (Player, Player) {
 
     (
         Player {
-            pos: split.0.chars().last().unwrap().to_digit(10).unwrap(),
-            score: 0,
+            pos: HashMap::from([(
+                split.0.chars().last().unwrap().to_digit(10).unwrap().into(),
+                HashMap::from([(1, 1)]),
+            )]),
         },
         Player {
-            pos: split.1.chars().last().unwrap().to_digit(10).unwrap(),
-            score: 0,
+            pos: HashMap::from([(
+                split.1.chars().last().unwrap().to_digit(10).unwrap().into(),
+                HashMap::from([(1, 1)]),
+            )]),
         },
     )
 }
