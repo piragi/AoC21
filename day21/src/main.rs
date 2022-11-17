@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, fs, vec};
 
 const WIN: u64 = 21;
 
@@ -6,7 +6,7 @@ const WIN: u64 = 21;
 struct Player {
     pos: u64,
     score: u64,
-    count: u64,
+    manyfold: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -17,11 +17,20 @@ struct State {
 #[derive(Debug)]
 struct Game {
     states: Vec<State>,
-    score: Vec<u64>,
+    wins: Vec<u64>,
 }
 
 struct Dice {
     sides: HashMap<u64, u64>,
+}
+
+impl State {
+    fn new(player1: Player, player2: Player) -> State {
+        State {
+            player: vec![player1, player2],
+            universes: 1,
+        }
+    }
 }
 
 impl Dice {
@@ -33,33 +42,41 @@ impl Dice {
 }
 
 impl Game {
+    fn new(state: State) -> Game {
+        Game {
+            states: vec![state],
+            wins: vec![0, 0],
+        }
+    }
+
     fn play(&mut self, dice: Dice, index_player: usize) {
         let mut evolved_states = Game {
             states: Vec::new(),
-            score: vec![0, 0],
+            wins: vec![0, 0],
         };
 
         for state in &self.states {
+            let player = &state.player[index_player];
+
             for side in &dice.sides {
-                let pos = (((state.player[index_player].pos + side.0) - 1) % 10) + 1;
-                let score = pos + state.player[index_player].score;
+                let pos = (player.pos + side.0 - 1) % 10 + 1;
+                let score = pos + player.score;
 
                 if score >= WIN {
-                    self.score[index_player] +=
-                        side.1 * state.universes * state.player[index_player].count;
+                    self.wins[index_player] += side.1 * state.universes * player.manyfold;
                 } else {
                     let mut evolved = state.clone();
 
-                    evolved.player[index_player].pos =
-                        (((state.player[index_player].pos + side.0) - 1) % 10) + 1;
+                    evolved.player[index_player].pos = pos;
                     evolved.player[index_player].score = score;
-                    evolved.player[index_player].count *= evolved.universes * *side.1;
+                    evolved.player[index_player].manyfold *= evolved.universes * *side.1;
                     evolved.universes = *side.1;
 
                     evolved_states.states.push(evolved);
                 }
             }
         }
+
         if !evolved_states.states.is_empty() {
             match index_player {
                 0 => evolved_states.play(dice, 1),
@@ -68,7 +85,7 @@ impl Game {
         }
 
         for i in 0..=1 {
-            self.score[i] += evolved_states.score[i];
+            self.wins[i] += evolved_states.wins[i];
         }
     }
 }
@@ -78,16 +95,12 @@ fn main() {
 
     let (player1, player2) = get_input("input.txt");
     let dice = Dice::new();
-    let state = State {
-        player: vec![player1, player2],
-        universes: 1,
-    };
-    let mut game = Game {
-        states: vec![state],
-        score: vec![0, 0],
-    };
+    let state = State::new(player1, player2);
+    let mut game = Game::new(state);
+
     game.play(dice, 0);
-    println!("{:?}", game.score[0].max(game.score[1]));
+    let max = game.wins[0].max(game.wins[1]);
+    println!("{}", max);
 
     let duration = start_time.elapsed();
     println!("Duration: {:?}\n", duration);
@@ -101,12 +114,12 @@ fn get_input(path: &str) -> (Player, Player) {
         Player {
             pos: split.0.chars().last().unwrap().to_digit(10).unwrap().into(),
             score: 0,
-            count: 1,
+            manyfold: 1,
         },
         Player {
             pos: split.1.chars().last().unwrap().to_digit(10).unwrap().into(),
             score: 0,
-            count: 1,
+            manyfold: 1,
         },
     )
 }
