@@ -1,53 +1,65 @@
-use std::{collections::HashMap, fs, hash::Hash};
-
-const INIT_RANGE: std::ops::RangeInclusive<i64> = -50..=50;
+use std::fs;
 
 struct ReactorCore {
-    grid: HashMap<Coord, bool>,
+    grid: Vec<Cuboid>,
 }
 impl ReactorCore {
     fn new() -> ReactorCore {
-        ReactorCore {
-            grid: HashMap::new(),
-        }
+        ReactorCore { grid: Vec::new() }
     }
-
-    fn count(&self) -> usize {
-        self.grid
-            .values()
-            .into_iter()
-            .filter(|value| *value == &true)
-            .count()
-    }
-    fn turn_off(self) -> ReactorCore {
-        ReactorCore {
-            grid: self
-                .grid
-                .into_iter()
-                .map(|(coord, _)| (coord, false))
-                .collect::<HashMap<Coord, bool>>(),
-        }
-    }
-
-    fn traverse_step(&mut self, cuboid: &Cuboid) {
-        for y in cuboid.coord.y.0..=cuboid.coord.y.1 {
-            for z in cuboid.coord.z.0..=cuboid.coord.z.1 {
-                for x in cuboid.coord.x.0..=cuboid.coord.x.1 {
-                    let status = self
-                        .grid
-                        .entry(Coord::new(x, y, z))
-                        .or_insert(cuboid.status);
-                    *status = cuboid.status;
-                }
+    fn count(&self) -> i64 {
+        let mut total_area = 0;
+        for cuboid in &self.grid {
+            match cuboid.status {
+                true => total_area += cuboid.area(),
+                false => total_area -= cuboid.area(),
             }
         }
+        total_area
     }
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug, Clone)]
 struct Cuboid {
     status: bool,
     coord: CoordRange,
+}
+impl Cuboid {
+    fn intersects(&self, other: &Cuboid) -> Option<Cuboid> {
+        let x = intersect_axis(self.coord.x, other.coord.x)?;
+        let y = intersect_axis(self.coord.y, other.coord.y)?;
+        let z = intersect_axis(self.coord.z, other.coord.z)?;
+
+        let status = match (self.status, other.status) {
+            (false, false) => true,
+            (true, true) => false,
+            (false, true) => false,
+            (true, false) => true,
+        };
+
+        Some(Cuboid {
+            coord: CoordRange { x, y, z },
+            status,
+        })
+    }
+
+    fn area(&self) -> i64 {
+        (i64::abs(self.coord.x.1 - self.coord.x.0) + 1)
+            * (i64::abs(self.coord.y.1 - self.coord.y.0) + 1)
+            * (i64::abs(self.coord.z.1 - self.coord.z.0) + 1)
+    }
+}
+
+fn intersect_axis(first: (i64, i64), second: (i64, i64)) -> Option<(i64, i64)> {
+    let intersection: Vec<i64> = (second.0..=second.1)
+        .into_iter()
+        .filter(|coord| coord >= &first.0 && coord <= &first.1)
+        .collect();
+
+    match !intersection.is_empty() {
+        true => Some((intersection[0], intersection[intersection.len() - 1])),
+        false => None,
+    }
 }
 
 #[derive(Debug)]
@@ -55,24 +67,31 @@ struct RebootSteps {
     steps: Vec<Cuboid>,
 }
 impl RebootSteps {
-    fn initialization(&self) -> ReactorCore {
+    fn reboot(&self) -> ReactorCore {
         let mut core = ReactorCore::new();
-        for cuboid in &self.steps {
-            if cuboid.coord.inside_init_range() {
-                core.traverse_step(cuboid);
+        for step in &self.steps {
+            if core.grid.is_empty() {
+                core.grid.push(step.clone());
+            } else {
+                let mut intersection_stack = Vec::new();
+                for cuboid in &core.grid {
+                    match step.intersects(cuboid) {
+                        Some(intersection) => intersection_stack.push(intersection),
+                        None => continue,
+                    }
+                }
+                core.grid.append(&mut intersection_stack);
+
+                if step.status {
+                    core.grid.push(step.clone());
+                }
             }
         }
         core
     }
-
-    fn reboot(&self, core: &mut ReactorCore) {
-        for cuboid in &self.steps {
-            core.traverse_step(cuboid);
-        }
-    }
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Debug, Clone)]
 struct CoordRange {
     x: (i64, i64),
     y: (i64, i64),
@@ -82,37 +101,14 @@ impl CoordRange {
     fn new(x: (i64, i64), y: (i64, i64), z: (i64, i64)) -> CoordRange {
         CoordRange { x, y, z }
     }
-
-    fn inside_init_range(&self) -> bool {
-        INIT_RANGE.contains(&self.x.0)
-            && INIT_RANGE.contains(&self.x.1)
-            && INIT_RANGE.contains(&self.y.0)
-            && INIT_RANGE.contains(&self.y.1)
-            && INIT_RANGE.contains(&self.z.0)
-            && INIT_RANGE.contains(&self.z.1)
-    }
-}
-
-#[derive(Eq, Hash, PartialEq, Debug)]
-struct Coord {
-    x: i64,
-    y: i64,
-    z: i64,
-}
-impl Coord {
-    fn new(x: i64, y: i64, z: i64) -> Coord {
-        Coord { x, y, z }
-    }
 }
 
 fn main() {
     let start_time = std::time::Instant::now();
 
-    let reboot_steps = get_input("test.txt");
-    let core = reboot_steps.initialization();
-    let mut reboot_core = core.turn_off();
-    reboot_steps.reboot(&mut reboot_core);
-    println!("{}", reboot_core.count());
+    let reboot_steps = get_input("input.txt");
+    let core = reboot_steps.reboot();
+    println!("count: {}", core.count());
 
     let duration = start_time.elapsed();
     println!("Duration: {:?}\n", duration);
